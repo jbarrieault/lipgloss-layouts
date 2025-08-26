@@ -9,10 +9,12 @@ import (
 )
 
 type model struct {
-	w, h       int
-	headerText string
-	bodyText   string
-	footerText string
+	w, h             int
+	headerText       string
+	bodyText         string
+	footerText       string
+	leftPaneContent  string
+	rightPaneContent string
 }
 
 func initialModel() model {
@@ -29,7 +31,9 @@ This various approaches to layout management in for TUI applications using lipgl
 Try lipgloss, you'll definitely love it!
 
 I promise.`,
-		footerText: "Footer — press q to quit",
+		leftPaneContent:  "[Left Pane]\n\nNot a lot of content here.",
+		rightPaneContent: "[Right Pane]\n\nMore content here\nthan in the left pane so it will likely require more vertical space.",
+		footerText:       "Footer — press q to quit",
 	}
 }
 
@@ -53,24 +57,37 @@ var (
 	green  = lipgloss.Color("#4a7c4a")
 	blue   = lipgloss.Color("#4a5f8b")
 	orange = lipgloss.Color("#b8860b")
+	red    = lipgloss.Color("#c91b12")
+	purple = lipgloss.Color("#8f12c9")
 
-	container = lipgloss.NewStyle().Padding(1).Background(pink)
+	containerStyle = lipgloss.NewStyle().Padding(1).Background(pink)
 
-	header = lipgloss.NewStyle().
-		Bold(true).
-		Background(green).
-		Foreground(lipgloss.Color("#f0f0f0")).
-		Align(lipgloss.Center)
+	headerStyle = lipgloss.NewStyle().
+			Bold(true).
+			Background(green).
+			Foreground(lipgloss.Color("#f0f0f0")).
+			Align(lipgloss.Center)
 
-	body = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		Foreground(lipgloss.Color("#f0f0f0")).
-		Background(blue)
+	bodyStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderBackground(blue).
+			Foreground(lipgloss.Color("#f0f0f0")).
+			Background(blue)
 
-	footer = lipgloss.NewStyle().
-		Background(orange).
-		Foreground(lipgloss.Color("#f0f0f0")).
-		Align(lipgloss.Center)
+	leftPaneStyle = lipgloss.NewStyle().
+			Background(red).
+			Foreground(lipgloss.Color("#f0f0f0")).
+			Align(lipgloss.Left)
+
+	rightPaneStyle = lipgloss.NewStyle().
+			Background(purple).
+			Foreground(lipgloss.Color("#f0f0f0")).
+			Align(lipgloss.Right)
+
+	footerStyle = lipgloss.NewStyle().
+			Background(orange).
+			Foreground(lipgloss.Color("#f0f0f0")).
+			Align(lipgloss.Center)
 )
 
 func (m model) View() string {
@@ -81,15 +98,15 @@ func (m model) View() string {
 	screenWidth := m.w
 	screenHeight := m.h
 
-	containerWidth, containerHeight := container.GetFrameSize()
+	containerWidth, containerHeight := containerStyle.GetFrameSize()
 	innerW := screenWidth - containerWidth
 	innerH := screenHeight - containerHeight
 
-	hdr := header.Width(innerW).Render(m.headerText)
-	ftr := footer.Width(innerW).Render(m.footerText)
+	hdr := headerStyle.Width(innerW).Render(m.headerText)
+	ftr := footerStyle.Width(innerW).Render(m.footerText)
 
 	// Get body style's frame size to determine how much margin, border, and padding it takes up
-	bodyContainerWidth, bodyContainerHeight := body.GetFrameSize()
+	bodyContainerWidth, bodyContainerHeight := bodyStyle.GetFrameSize()
 	innerBodyWidth := innerW - bodyContainerWidth
 	innerBodyHeight := innerH - bodyContainerHeight
 
@@ -97,53 +114,24 @@ func (m model) View() string {
 	used := lipgloss.Height(hdr) + lipgloss.Height(ftr)
 	availableBodyH := innerBodyHeight - used
 
-	// A few different layout styling options below...
+	// Grow body pane heights + no footer overflow
+	// I don't fully understand why this combination of Height and MaxHeight works,
+	// but it does correctly grow the body pane heights to fill the available space,
+	// while also making the footer "sticky".
+	leftPane := leftPaneStyle.Width(innerBodyWidth / 2).Height(availableBodyH).MaxHeight(availableBodyH).Render(m.leftPaneContent)
+	rightPane := rightPaneStyle.Width(innerBodyWidth / 2).Height(availableBodyH).MaxHeight(availableBodyH).Render(m.rightPaneContent)
+	bodyContent := lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
 
-	// 1. Shrink Body
-	// - body height: only use as much as needed for its content
-	// - footer: sticks to bottom of body (not the terminal screen)
-	// - content overflow: body & footer overflow off bottom of terminal screen when content doesn't fit
-	//
-	// Solid option, so long as the application implements a
-	// "Your terminal is too small" screen when content height > terminal height,
-	// if your footer contains useful info such as keyboard shortcuts.
-	// bodyStyle := body.Width(innerBodyWidth)
-
-	// 2. Grow Body
-	// - body height: grows (inside border) to to fill available screen space
-	// - footer: appears at bottom of screen (because body takes up available space)
-	// - content overflow: body & footer overflow off bottom of terminal screen when content doesn't fit
-	//
-	// This option is very similar to 1.
-	// bodyStyle := body.Width(innerBodyWidth).Height(availableBodyH)
-
-	// 3. Shrink Body + no footer overflow
-	// - body height: only use as much as needed for its content
-	// - footer: appears at bottom of screen (because body takes up available space)
-	// - content overflow: body is clipped at its bottom if it's content doesn't fit,
-	//     but the footer is not clipped and remained visible at the bottom of the screen.
-	//
-	// The only weird thing about this one is that when the body content is clipped,
-	// the sticky footer covers the body's bottom border.
-	// In that case, the user may not realize the body content is being truncated.
-	// But, if body has a border, that being covered by the footer may give enough
-	// visual indication that the content is truncated.
-	// bodyStyle := body.Width(innerBodyWidth).MaxHeight(availableBodyH)
-
-	// 4. Grow Body + no footer overflow
-	// I don't fully understand why this works, but it does.
-	bodyStyle := body.Width(innerBodyWidth).Height(availableBodyH).MaxHeight(innerBodyHeight)
-
-	// log.Printf("height: %d, width: %d, innerW: %d, innerH: %d, containerWidth: %d, containerHeight: %d", screenHeight, screenWidth, innerW, innerH, containerWidth, containerHeight)
-
-	bdy := bodyStyle.Render(m.bodyText)
+	bdy := bodyStyle.Render(bodyContent)
 
 	content := lipgloss.JoinVertical(lipgloss.Left, hdr, bdy, ftr)
+
+	// log.Printf("height: %d, width: %d, innerW: %d, innerH: %d, containerWidth: %d, containerHeight: %d", screenHeight, screenWidth, innerW, innerH, containerWidth, containerHeight)
 
 	// setting MaxHeight on the main container is key to making
 	// the top of the container's content fixed to the top of the terminal screen,
 	// even when the terminal size is too small to fit all content.
-	return container.Width(screenWidth).MaxHeight(screenHeight).Render(content)
+	return containerStyle.Width(screenWidth).MaxHeight(screenHeight).Render(content)
 }
 
 func main() {
