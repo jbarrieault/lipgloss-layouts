@@ -9,12 +9,13 @@ import (
 )
 
 type model struct {
-	w, h             int
-	headerText       string
-	bodyText         string
-	footerText       string
-	leftPaneContent  string
-	rightPaneContent string
+	w, h            int
+	headerText      string
+	bodyText        string
+	footerText      string
+	leftPaneContent string
+	rightPaneBody   string
+	rightPaneFooter string
 }
 
 func initialModel() model {
@@ -31,9 +32,10 @@ This various approaches to layout management in for TUI applications using lipgl
 Try lipgloss, you'll definitely love it!
 
 I promise.`,
-		leftPaneContent:  "[Left Pane]\n\nNot a lot of content here.",
-		rightPaneContent: "[Right Pane]\n\nMore content here\nthan in the left pane so it will likely require more vertical space.",
-		footerText:       "Footer — press q to quit",
+		leftPaneContent: "[Left Pane]\n\nNot a lot of content here.",
+		rightPaneBody:   "[Right Pane]\n\nMore content here\nthan in the left pane so it will likely require more vertical space.",
+		rightPaneFooter: "[Right Pane Footer]",
+		footerText:      "Footer — press q to quit",
 	}
 }
 
@@ -84,6 +86,12 @@ var (
 			Foreground(lipgloss.Color("#f0f0f0")).
 			Align(lipgloss.Right)
 
+	rightPaneBodyStyle = lipgloss.NewStyle().
+				Align(lipgloss.Left)
+
+	rightPaneFooterStyle = lipgloss.NewStyle().
+				Align(lipgloss.Center)
+
 	footerStyle = lipgloss.NewStyle().
 			Background(orange).
 			Foreground(lipgloss.Color("#f0f0f0")).
@@ -118,9 +126,23 @@ func (m model) View() string {
 	// I don't fully understand why this combination of Height and MaxHeight works,
 	// but it does correctly grow the body pane heights to fill the available space,
 	// while also making the footer "sticky".
-	leftPane := leftPaneStyle.Width(innerBodyWidth / 2).Height(availableBodyH).MaxHeight(availableBodyH).Render(m.leftPaneContent)
-	rightPane := rightPaneStyle.Width(innerBodyWidth / 2).Height(availableBodyH).MaxHeight(availableBodyH).Render(m.rightPaneContent)
-	bodyContent := lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
+	leftPaneWidth := innerBodyWidth / 2
+	rightPaneWidth := innerBodyWidth / 2
+	leftPaneContent := leftPaneStyle.Width(leftPaneWidth).Height(availableBodyH).MaxHeight(availableBodyH).Render(m.leftPaneContent)
+
+	// setting Width() is required to make Align() styles respected.
+	rightPaneFooterContent := rightPaneFooterStyle.Width(rightPaneWidth).Render(m.rightPaneFooter)
+	rightPaneFooterHeight := lipgloss.Height(rightPaneFooterContent)
+	rightPaneBodyHeight := availableBodyH - rightPaneFooterHeight
+
+	// panel body is clipped if not enough vertical space for it + the "sticky" footer
+	rightPaneBodyContent := rightPaneBodyStyle.Width(rightPaneWidth).Height(rightPaneBodyHeight).MaxHeight(rightPaneBodyHeight).Render(m.rightPaneBody)
+
+	// allow both body and footer to overflow (be clipped) if not enough vertical space for them
+	// rightPaneBodyContent := rightPaneBodyStyle.Width(rightPaneWidth).Height(rightPaneBodyHeight).Render(m.rightPaneBody)
+
+	rightPaneContent := rightPaneStyle.Width(rightPaneWidth).Height(availableBodyH).MaxHeight(availableBodyH).Render(lipgloss.JoinVertical(lipgloss.Bottom, rightPaneBodyContent, rightPaneFooterContent))
+	bodyContent := lipgloss.JoinHorizontal(lipgloss.Top, leftPaneContent, rightPaneContent)
 
 	bdy := bodyStyle.Render(bodyContent)
 
